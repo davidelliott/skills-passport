@@ -109,21 +109,29 @@ scanner_reads <- scanner_reads[!scanner_reads$scan%in%competencies$Competency,]
 
 # match up card scans to students
 colnames(scanner_reads)[1] <- "Badge.Number"
-scanner_reads2 <- merge(scanner_reads,ID_mapping,all = TRUE)
-all_reads <- scanner_reads2
-matched_reads <- scanner_reads2[!is.na(scanner_reads2$Name),]
-matched_reads <- matched_reads[!is.na(matched_reads$observed_competency),]
-unmatched_reads <- scanner_reads2[is.na(scanner_reads2$Name),]
+scanner_reads2 <- merge(scanner_reads,ID_mapping,by.x = "Badge.Number",by.y = "Badge.Number",all = TRUE)
+
+# Where we don't have a mapping of student ID/name to the card number
+# replace the name to indicate this
+
+scanner_reads2[is.na(scanner_reads2$Name),"Name"] <- "unknown"
+
+matched_reads <- scanner_reads2
+#matched_reads <- scanner_reads2[!is.na(scanner_reads2$Name),]
+#matched_reads <- matched_reads[!is.na(matched_reads$observed_competency),]
+#unmatched_reads <- scanner_reads2[is.na(scanner_reads2$Name),]
+
+# Simplifying the addition of manual reads. Use only the competency and the student ID
+manual <- manual[!is.na(manual$student_ID),c("observed_competency","student_ID")]
 
 # we now have matched and unmatched reads ready for reporting which should be done per student by the student ID number
 # First, add any manual records e.g. from attendance data
-# manual$Name <- paste(manual$First.Name,manual$Last.Name,sep=" ")
-matched_reads <- merge(matched_reads,manual,all = TRUE)
+matched_reads <- rbind.fill(matched_reads,manual)
+#matched_reads <- merge(matched_reads,manual,all.x = TRUE)
 matched_reads_competencies <- merge(matched_reads,competencies,by.x = "observed_competency",by.y = "Competency")
 
 # change some column names for clearer outputs
-colnames(matched_reads_competencies)[c(1,62)] <- c("code", "competency")
-
+colnames(matched_reads_competencies)[c(1,12)] <- c("code", "competency")
 
 # get a list of the student IDs
 students <- unique(matched_reads$student_ID)
@@ -132,15 +140,36 @@ student_info <- 1
 # pull out the records and make a report for each student
 skills_list <- unique(competencies$skill.group)
 # for testing:
-student <- students[6]
+student <- students[5]
 
 for(student in students) {
   s_name <- ID_mapping[ID_mapping$student_ID==student,"Name"][1]  
   s_email <- ID_mapping[ID_mapping$student_ID==student,"Email"][1]
-  cat("<hr>\nHello ",s_name,"\n\n
+  
+  # identify skills
+  student_competencies <- matched_reads_competencies[matched_reads_competencies$student_ID==student,c("code","date","skill.group","competency","Badge.Number")]
+  # there are lots of NAs, remove. Must be something wrong to introduce them.
+  student_competencies <- student_competencies[!is.na(student_competencies$code),]
+  #print(knitr::kable(student_competencies, format="html"))
+  # get the badge numbers - it is possible for more than one
+  
+  s_badge <- unique(student_competencies$Badge.Number)
+  s_badge <- paste(na.omit(s_badge))
+  
+  # remove badge number from the table because there is no need to report it further
+  student_competencies <- student_competencies[,-5]
+  
+  # identify skills by group
+  student_skills_groups <- unique(student_competencies$skill.group)
+  
+  cat("<hr>\nHello ",s_name,"(ID ",student,"; Badge ",s_badge,")\n\n","
 
 Here is a report on the skills we have recorded for you. Please note that the recorded skills can be highly variable depending on your module selections. You can use this report to assist in your skills related assessments, for your personal development planning, and for developing your CV etc.\n\n
 ")
+  
+  if(length(s_badge)<1) {
+   cat("*** We do not have a record of your badge number. This means your skills report is based only on manual records and not including any scans you may have had. Please contact your personal tutor and inform them of your badge number. ") 
+  }
   # print student info
   # Note that students should fill in the questionnaire multiple times, so there can be multiple entries
   
@@ -149,13 +178,7 @@ Here is a report on the skills we have recorded for you. Please note that the re
   cat("\n")
   cat("###","Your verified competency observations\n")
   
-  # identify skills
-  student_competencies <- matched_reads_competencies[matched_reads_competencies$student_ID==student,c("code","date","skill.group","competency")]
-
-  #print(knitr::kable(student_competencies, format="html"))
   
-  # identify skills by group
-  student_skills_groups <- unique(student_competencies$skill.group)
   
   for(skill_group in student_skills_groups) {
     # skill_group <- student_skills_groups[1] for testing
@@ -176,7 +199,7 @@ Here is a report on the skills we have recorded for you. Please note that the re
 ```{r output-files}
 # classify skills - alternative way 
 matched_reads2 <- merge(matched_reads,competencies,by.x="observed_competency",by.y="Competency")
-unmatched_reads2 <- merge(unmatched_reads,competencies,by.x="observed_competency",by.y="Competency")
+#unmatched_reads2 <- merge(unmatched_reads,competencies,by.x="observed_competency",by.y="Competency")
 # report of student attainment:
 matched_table <- as.data.frame((matched <- with(matched_reads2, table(student_ID, observed_competency))))
 #with(matched_reads2, table(Name, observed_competency))
@@ -194,9 +217,9 @@ matched.named <- matched.named[matched.named$Freq>0,c("student_ID","Name","obser
 
 
 # get a report of all competencies by badge number (note that student_ID is actually badge number here)
-badge_competencies <- with(all_reads, table(Badge.Number, observed_competency))
-fname <- "d:/git/skills-passport/output/badge_competencies.csv"
-write.csv(x = badge_competencies, file = fname)
+#badge_competencies <- with(all_reads, table(Badge.Number, observed_competency))
+#fname <- "d:/git/skills-passport/output/badge_competencies.csv"
+#write.csv(x = badge_competencies, file = fname)
 
 ```
 
