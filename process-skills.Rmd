@@ -11,13 +11,15 @@ library(plyr)
 library(dplyr)
 # install.packages("kableExtra")
 library(kableExtra)
+source("d:/git/skills-passport/local.R")
 
 ```
 
-This report lists the competencies we have recorded for each student in the selected cohort:
+This report lists the competencies we have recorded for each student in the selected cohort: `r class_name` (`r length(students)` students)
 
 ```{r import_data,echo=FALSE}
 setwd("d:/git/skills-passport")
+
 
 # load the competency list. This will need to be updated from the competencies spreadsheet if any skills are added
 competencies <- read.csv(paste(getwd(),"/data/competencies.csv",sep=""))
@@ -37,6 +39,11 @@ competencies$Competency <- competencies$Code
 
 # Load ID mapping - this is needed because student badge numbers or other identifiers might not be the same as student ID
 ID_mapping <- read.csv("data/ID_mapping/ID_mapping.csv")
+
+# Filter by the selected class, if one is defined
+if(length(students)>0) {
+  ID_mapping <- ID_mapping[ID_mapping$student_ID%in%students,]
+}
 
 # subset to records of interest for a report
 # ID_mapping <- ID_mapping[88:nrow(ID_mapping),]
