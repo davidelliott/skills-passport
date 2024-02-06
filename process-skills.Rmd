@@ -1,0 +1,214 @@
+---
+title: "process-skills.Rmd"
+author: "David Elliott"
+date: "2023-05-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+getwd()
+# load the competency list. This will need to be updated from the competencies spreadsheet if any skills are added
+competencies <- read.csv(paste(getwd(),"/data/competencies.csv",sep=""))
+
+# Load attendance data to establish a mapping between student card and student ID number
+# ID_mapping <- read.csv("data/ID_mapping/attendance_swipe_log_14_11_2022_23_26_11.csv")
+ID_mapping <- read.csv("data/ID_mapping/Skills_passport_update(1-79).csv")
+ID_mapping <- read.csv("data/ID_mapping/Skills_passport_update(1-106).csv")
+# just keeping the recent updates to respond specifically to them:
+nrow(ID_mapping)
+
+# subset to records of interest for a report
+# ID_mapping <- ID_mapping[88:nrow(ID_mapping),]
+```
+
+
+```{r}
+
+# rename columns
+colnames(ID_mapping)[6] <- "Badge.Number"
+colnames(ID_mapping)[7] <- "Attendance.self.assess"
+colnames(ID_mapping)[8] <- "note1"
+colnames(ID_mapping)[9] <- "note2"
+colnames(ID_mapping)[10] <- "note3"
+colnames(ID_mapping)[11] <- "note4"
+
+# get student ID numbers
+ID_mapping$student_ID <- sub("@.*","",ID_mapping$Email)
+
+# keep only the needed columns
+ID_mapping <- ID_mapping[,c("ID","Name","Email","student_ID","Badge.Number","Attendance.self.assess","note1","note2","note3","note4")]
+
+# keep only unique entries (i.e. 1 per badge / ID combination)
+ID_mapping <- unique(ID_mapping)
+
+# Manual removal of invalid data
+# altered code to permit duplicates so commenting this our for now
+# ID_mapping <- ID_mapping[!ID_mapping$ID==38,] # duplicate entry of card number
+# ID_mapping <- ID_mapping[!ID_mapping$ID==5,] # duplicate entry of card number
+# ID_mapping <- ID_mapping[!ID_mapping$ID==3,] # duplicate entry of card number
+
+
+# convert the badge number to character class, to match the class of the scans
+ID_mapping$Badge.Number <- as.character(ID_mapping$Badge.Number)
+
+# store the competency code in the "Competency" column (replaces the barcode which is of no use here)
+competencies$Competency <- competencies$Code
+
+# load data from scanner files
+#scanner998753 <- read.csv("data/2022-11-14_998753.csv", header=FALSE)
+#scanner998753 <- read.csv("data/2023-03-15_998753.csv", header=FALSE)
+#scanner998753 <- read.csv("data/2023-03-22_998753.csv", header=FALSE)
+scanner998753 <- read.csv("data/scans/2023-05-22_998753.csv", header=FALSE)
+
+#scanner998769 <- read.csv("data/2022-11-14_998769.csv", header=FALSE)
+scanner998769 <- read.csv("data/scans/2023-03-15_998769.csv", header=FALSE)
+#scanner998769 has died - unable to read on 2023-05-22
+
+#scanner998830 <- read.csv("data/2022-11-14_998830.csv", header=FALSE)
+#scanner998830 <- read.csv("data/2023-03-22_998830.csv", header=FALSE)
+scanner998830 <- read.csv("data/scans/2023-05-22_998830.csv", header=FALSE)
+
+#scanner626056 <- read.csv("data/2023-03-15_626056.csv", header=FALSE)
+scanner626056 <- read.csv("data/scans/2023-05-22_626056.csv", header=FALSE)
+
+
+#scanner998826 <- read.csv("data/2023-03-22_998826.csv", header=FALSE)
+scanner998826 <- read.csv("data/scans/2023-05-22_998826.csv", header=FALSE)
+
+
+# load data from attendance record. 
+# The required format is that the ID column and observed competency match up with the format of "matched records"
+# which is created later on. Note that the ID column from attendance will be the student ID 
+# which is different from the barcode so we import it differently.
+manual <- read.csv("data/manual/4BY537_manual_by_attendance_v3.csv", header=TRUE)
+
+# combine all the scanner reads together into 1 object
+scanner_reads <- rbind(scanner998753,scanner998769,scanner998830,scanner626056,scanner998826)
+
+# name some columns
+# Note that the scans of student cards do not contain the student ID, we will need to match that up later
+# it only contains the card number which probably changes if the card is lost and re-issued
+names(scanner_reads)[1] <- "scan"
+names(scanner_reads)[4] <- "date"
+names(scanner_reads)[5] <- "time"
+
+# make a column for recording the competency on each scan
+scanner_reads$observed_competency <- "none"
+
+# make a column for storing the date/time of scan
+scanner_reads$datetime <- as.POSIXct(Sys.time())
+```
+
+
+
+```{r process,results="asis"}
+# read through the scans and assign a competency to the student scans
+# based on the last scanned competency
+# whilst we are at it also assign a datetime to each record
+for(i in 1:nrow(scanner_reads)){
+  if(scanner_reads[i,1]%in%competencies$Competency) {this_competency <- scanner_reads[i,1]}
+  scanner_reads$observed_competency[i] <- this_competency
+  t <- paste(scanner_reads$date[i],scanner_reads$time[i],sep="")
+  scanner_reads$datetime[i] <- strptime(t,format=" %Y-%m-%d %I:%M:%S %p")
+}
+
+# delete the scanner reads of the competency barcodes that have now been applied to the records
+scanner_reads <- scanner_reads[!scanner_reads$scan%in%competencies$Competency,]
+
+# remove the "P" off the front of scans because it does not appear in the attendance data
+# scanner_reads$scan <- sub(pattern = "P",replacement = "",x = scanner_reads$scan )
+
+# match up card scans to students
+#rownames(ID_mapping) <- ID_mapping$Badge.Number 
+# I commented this out because it will not allow duplicate entries
+colnames(scanner_reads)[1] <- "Badge.Number"
+scanner_reads2 <- merge(scanner_reads,ID_mapping,all = TRUE)
+all_reads <- scanner_reads2
+matched_reads <- scanner_reads2[!is.na(scanner_reads2$Name),]
+matched_reads <- matched_reads[!is.na(matched_reads$observed_competency),]
+unmatched_reads <- scanner_reads2[is.na(scanner_reads2$Name),]
+
+# we now have matched and unmatched reads ready for reporting which should be done per student by the student ID number
+# First, add any manual records e.g. from attendance data
+manual$Name <- paste(manual$First.Name,manual$Last.Name,sep=" ")
+matched_reads <- merge(matched_reads,manual,all = TRUE)
+matched_reads_competencies <- merge(matched_reads,competencies,by.x = "observed_competency",by.y = "Competency")
+
+# get a list of the student IDs
+students <- unique(matched_reads$student_ID)
+student_info <- 1
+ID_mapping$student_ID%in%students
+
+# pull out the records and make a report for each student
+skills_list <- unique(competencies$skill.group)
+
+for(student in students) {
+  cat("<hr>\nHello\n\n
+
+Thanks for filling in the skills passport form. Here is a report on your responses and the skills we have recorded for you. Please note that the recorded skills can be highly variable depending on your module selections, and we are gradually increasing the skills recording in the programme. You can optionally use this report to assist in your skills related assessments. We hope that as you continue to build up your skills passport that it will provide a valuable resource for reflecting upon your personal development and building your CV etc.\n\n
+")
+  # print student info
+  # Note that students should fill in the questionnaire multiple times, so there can be multiple entries
+  s_name <- ID_mapping[ID_mapping$student_ID==student,"Name"][1]  
+  s_email <- ID_mapping[ID_mapping$student_ID==student,"Email"][1]
+  s_note2 <- ID_mapping[ID_mapping$student_ID==student,"note2"]
+  s_note3 <- ID_mapping[ID_mapping$student_ID==student,"note3"]
+  cat("##",s_name, "\n")
+  cat(s_email, "\n\n")
+  cat("\n What is the skill you are most pleased about learning so far in your programme? \n\n")
+  for(note in s_note2) {
+    cat(" * ",note, "\n")
+  }
+  cat("\n What skills would you especially like to gain throughout your programme? \n\n")
+  for(note in s_note3) {
+    cat(" * ",note, "\n")
+  }
+  cat("\n")
+  cat("###","Your verified competency observations\n")
+  
+  # identify skills
+  student_competencies <- matched_reads_competencies[matched_reads_competencies$student_ID==student,c("observed_competency","date","skill.group","Competency.description")]
+  #paste(student_competencies,"\n")
+#  class(student_competencies)
+  
+  print(knitr::kable(student_competencies, format="html"))
+  
+  # student_competencies <- matched_reads[matched_reads$student_ID==student,c("observed_competency")]
+  # classify skills
+  cat("<br>\n\n Kind regards <br>\n Dave\n")
+}
+knitr::kable(student_competencies, format="html")
+
+```
+
+```{r output-files}
+# classify skills - alternative way 
+student_competencies <- merge(student_competencies,competencies,by.x="observed_competency",by.y="Competency")
+#with(student_competencies, table(skill.group.x, observed_competency,Competency.description.x))
+
+matched_reads2 <- merge(matched_reads,competencies,by.x="observed_competency",by.y="Competency")
+unmatched_reads2 <- merge(unmatched_reads,competencies,by.x="observed_competency",by.y="Competency")
+# report of student attainment:
+matched_table <- as.data.frame((matched <- with(matched_reads2, table(Name, observed_competency))))
+with(matched_reads2, table(Name, observed_competency))
+(matched <- with(matched_reads2, table(Name, observed_competency)))
+fname <- paste(getwd(),"/named_competencies.csv",sep="")
+write.csv(x = matched, file = fname)
+
+# get a report of all competencies by badge number (note that student_ID is actually badge number here)
+badge_competencies <- with(all_reads, table(Badge.Number, observed_competency))
+fname <- paste(getwd(),"/badge_competencies.csv",sep="")
+write.csv(x = badge_competencies, file = fname)
+
+```
+
