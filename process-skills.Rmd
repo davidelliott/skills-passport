@@ -16,16 +16,26 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r}
+setwd("d:/git/skills-passport")
 getwd()
 # load the competency list. This will need to be updated from the competencies spreadsheet if any skills are added
 competencies <- read.csv(paste(getwd(),"/data/competencies.csv",sep=""))
 
-# Load attendance data to establish a mapping between student card and student ID number
-# ID_mapping <- read.csv("data/ID_mapping/attendance_swipe_log_14_11_2022_23_26_11.csv")
-ID_mapping <- read.csv("data/ID_mapping/Skills_passport_update(1-79).csv")
-ID_mapping <- read.csv("data/ID_mapping/Skills_passport_update(1-106).csv")
-# just keeping the recent updates to respond specifically to them:
-nrow(ID_mapping)
+# store the competency code in the "Competency" column (replaces the barcode which is of no use here)
+competencies$Competency <- competencies$Code
+
+# Format of the competencies file: (as CSV)
+## Code	Competency	Competency description	Competency classification	skill group	type
+## PSH01	*PSH01*	Use an automatic pipette for volumes between 100ul – 1000 ul	essential	Pipetting and sample handling	technical
+## PSH02	*PSH02*	Use an automatic pipette for volumes between 1ul – 10 ul	desirable	Pipetting and sample handling	technical
+## PSH03	*PSH03*	Use a serological pipette for volumes between 5 ml – 25 ml	desirable	Pipetting and sample handling	technical
+
+# The competencies are followed by module and programme specific information, 
+# but I plan to move this out into a different file to make system more flexible
+# Then, the programme / module can be specified at run time to make customised reports
+
+# Load ID mapping - this is needed because student badge numbers or other identifiers might not be the same as student ID
+ID_mapping <- read.csv("data/ID_mapping/ID_mapping.csv")
 
 # subset to records of interest for a report
 # ID_mapping <- ID_mapping[88:nrow(ID_mapping),]
@@ -34,73 +44,33 @@ nrow(ID_mapping)
 
 ```{r}
 
-# rename columns
-colnames(ID_mapping)[6] <- "Badge.Number"
-colnames(ID_mapping)[7] <- "Attendance.self.assess"
-colnames(ID_mapping)[8] <- "note1"
-colnames(ID_mapping)[9] <- "note2"
-colnames(ID_mapping)[10] <- "note3"
-colnames(ID_mapping)[11] <- "note4"
+setwd("data/scans")
+library(plyr)
+scanner_reads <- ldply(list.files(), read.csv, header=FALSE)
 
-# get student ID numbers
-ID_mapping$student_ID <- sub("@.*","",ID_mapping$Email)
-
-# keep only the needed columns
-ID_mapping <- ID_mapping[,c("ID","Name","Email","student_ID","Badge.Number","Attendance.self.assess","note1","note2","note3","note4")]
-
-# keep only unique entries (i.e. 1 per badge / ID combination)
-ID_mapping <- unique(ID_mapping)
-
-# Manual removal of invalid data
-# altered code to permit duplicates so commenting this our for now
-# ID_mapping <- ID_mapping[!ID_mapping$ID==38,] # duplicate entry of card number
-# ID_mapping <- ID_mapping[!ID_mapping$ID==5,] # duplicate entry of card number
-# ID_mapping <- ID_mapping[!ID_mapping$ID==3,] # duplicate entry of card number
-
-
-# convert the badge number to character class, to match the class of the scans
-ID_mapping$Badge.Number <- as.character(ID_mapping$Badge.Number)
-
-# store the competency code in the "Competency" column (replaces the barcode which is of no use here)
-competencies$Competency <- competencies$Code
-
-# load data from scanner files
-#scanner998753 <- read.csv("data/2022-11-14_998753.csv", header=FALSE)
-#scanner998753 <- read.csv("data/2023-03-15_998753.csv", header=FALSE)
-#scanner998753 <- read.csv("data/2023-03-22_998753.csv", header=FALSE)
-scanner998753 <- read.csv("data/scans/2023-05-22_998753.csv", header=FALSE)
-
-#scanner998769 <- read.csv("data/2022-11-14_998769.csv", header=FALSE)
-scanner998769 <- read.csv("data/scans/2023-03-15_998769.csv", header=FALSE)
-#scanner998769 has died - unable to read on 2023-05-22
-
-#scanner998830 <- read.csv("data/2022-11-14_998830.csv", header=FALSE)
-#scanner998830 <- read.csv("data/2023-03-22_998830.csv", header=FALSE)
-scanner998830 <- read.csv("data/scans/2023-05-22_998830.csv", header=FALSE)
-
-#scanner626056 <- read.csv("data/2023-03-15_626056.csv", header=FALSE)
-scanner626056 <- read.csv("data/scans/2023-05-22_626056.csv", header=FALSE)
-
-
-#scanner998826 <- read.csv("data/2023-03-22_998826.csv", header=FALSE)
-scanner998826 <- read.csv("data/scans/2023-05-22_998826.csv", header=FALSE)
-
-
-# load data from attendance record. 
-# The required format is that the ID column and observed competency match up with the format of "matched records"
-# which is created later on. Note that the ID column from attendance will be the student ID 
-# which is different from the barcode so we import it differently.
-manual <- read.csv("data/manual/4BY537_manual_by_attendance_v3.csv", header=TRUE)
-
-# combine all the scanner reads together into 1 object
-scanner_reads <- rbind(scanner998753,scanner998769,scanner998830,scanner626056,scanner998826)
+# The format of the scanner files is like this (CSV):
+## PSH09	Code-39	11:10:05	07/10/2022	19:20:16	18/12/2023	998826
+## P201544022	Code-39	11:10:07	07/10/2022	19:20:16	18/12/2023	998826
+# There are no headers in the file - see below for the column contents
+# the scheme of use is that the teacher scans the competency barcode then the student card
+# So in this example, the student P201544022 has been observed doing the competency PSH09
 
 # name some columns
 # Note that the scans of student cards do not contain the student ID, we will need to match that up later
 # it only contains the card number which probably changes if the card is lost and re-issued
 names(scanner_reads)[1] <- "scan"
-names(scanner_reads)[4] <- "date"
-names(scanner_reads)[5] <- "time"
+names(scanner_reads)[2] <- "format" # not used
+names(scanner_reads)[3] <- "date"
+names(scanner_reads)[4] <- "time"
+names(scanner_reads)[5] <- "download_date"
+names(scanner_reads)[6] <- "download_time"
+names(scanner_reads)[7] <- "scanner"
+
+# load data from attendance record. 
+# The required format is that the ID column and observed competency match up with the format of "matched records"
+# which is created later on. Note that the ID column from attendance will be the student ID 
+# which is different from the barcode so we import it differently.
+manual <- read.csv("../manual/4BY537_manual_by_attendance_v3.csv", header=TRUE)
 
 # make a column for recording the competency on each scan
 scanner_reads$observed_competency <- "none"
@@ -161,18 +131,18 @@ Thanks for filling in the skills passport form. Here is a report on your respons
   # Note that students should fill in the questionnaire multiple times, so there can be multiple entries
   s_name <- ID_mapping[ID_mapping$student_ID==student,"Name"][1]  
   s_email <- ID_mapping[ID_mapping$student_ID==student,"Email"][1]
-  s_note2 <- ID_mapping[ID_mapping$student_ID==student,"note2"]
-  s_note3 <- ID_mapping[ID_mapping$student_ID==student,"note3"]
+#  s_note2 <- ID_mapping[ID_mapping$student_ID==student,"note2"]
+#  s_note3 <- ID_mapping[ID_mapping$student_ID==student,"note3"]
   cat("##",s_name, "\n")
   cat(s_email, "\n\n")
-  cat("\n What is the skill you are most pleased about learning so far in your programme? \n\n")
-  for(note in s_note2) {
-    cat(" * ",note, "\n")
-  }
-  cat("\n What skills would you especially like to gain throughout your programme? \n\n")
-  for(note in s_note3) {
-    cat(" * ",note, "\n")
-  }
+#  cat("\n What is the skill you are most pleased about learning so far in your programme? \n\n")
+#  for(note in s_note2) {
+#    cat(" * ",note, "\n")
+#  }
+#  cat("\n What skills would you especially like to gain throughout your programme? \n\n")
+#  for(note in s_note3) {
+#    cat(" * ",note, "\n")
+#  }
   cat("\n")
   cat("###","Your verified competency observations\n")
   
