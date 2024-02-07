@@ -1,7 +1,5 @@
 ---
 title: "Skills Passport report"
-author: "David Elliott"
-date: "2024-02-06"
 output: html_document
 ---
 
@@ -15,7 +13,11 @@ source("d:/git/skills-passport/local.R")
 
 ```
 
-This report lists the competencies we have recorded for each student in the selected cohort: `r class_name` (`r length(students)` students)
+# `r class_name` (`r length(students)` students)
+
+`r format(Sys.time(),'%A, %B %d, %Y')`
+
+This report lists the competencies we have recorded for each student in the selected cohort. 
 
 ```{r import_data,echo=FALSE}
 setwd("d:/git/skills-passport")
@@ -111,6 +113,11 @@ scanner_reads <- scanner_reads[!scanner_reads$scan%in%competencies$Competency,]
 colnames(scanner_reads)[1] <- "Badge.Number"
 scanner_reads2 <- merge(scanner_reads,ID_mapping,by.x = "Badge.Number",by.y = "Badge.Number",all = TRUE)
 
+# Identify any unmatched reads - where we have the card ID but not the student ID
+unmatched_reads <- scanner_reads2[is.na(scanner_reads2$Name),]
+# set some of the fields to make this obvious in output:
+unmatched_reads$name <- paste("Unknown - badge number ",unmatched_reads$Badge.Number)
+unmatched_reads$student_ID <- paste("Unknown - badge number ",unmatched_reads$Badge.Number)
 # Where we don't have a mapping of student ID/name to the card number
 # replace the name to indicate this
 
@@ -119,7 +126,7 @@ scanner_reads2[is.na(scanner_reads2$Name),"Name"] <- "unknown"
 matched_reads <- scanner_reads2
 #matched_reads <- scanner_reads2[!is.na(scanner_reads2$Name),]
 #matched_reads <- matched_reads[!is.na(matched_reads$observed_competency),]
-#unmatched_reads <- scanner_reads2[is.na(scanner_reads2$Name),]
+
 
 # Simplifying the addition of manual reads. Use only the competency and the student ID
 manual <- manual[!is.na(manual$student_ID),c("observed_competency","student_ID")]
@@ -127,14 +134,25 @@ manual <- manual[!is.na(manual$student_ID),c("observed_competency","student_ID")
 # we now have matched and unmatched reads ready for reporting which should be done per student by the student ID number
 # First, add any manual records e.g. from attendance data
 matched_reads <- rbind.fill(matched_reads,manual)
+# Now add the unmatched reads too, so we at least then get the output of the badge number report
+# Note that this can take a long time to run because it will include a lot of unmatched records.
+# so, it can be selected in local options file.
+if(include_unmatched_badges) {
+  matched_reads <- rbind.fill(matched_reads,unmatched_reads)
+}
 #matched_reads <- merge(matched_reads,manual,all.x = TRUE)
 matched_reads_competencies <- merge(matched_reads,competencies,by.x = "observed_competency",by.y = "Competency")
+
+# there are more student IDs in the matched reads than in our list of students
+# This should not be, requires investigation. For now, remove the ones that don't belong in the output@
+#unique(matched_reads_competencies$student_ID)
+#students
+matched_reads_competencies <- matched_reads_competencies[matched_reads_competencies$student_ID%in%students,]
+
 
 # change some column names for clearer outputs
 colnames(matched_reads_competencies)[c(1,12)] <- c("code", "competency")
 
-# get a list of the student IDs
-students <- unique(matched_reads$student_ID)
 student_info <- 1
 
 # pull out the records and make a report for each student
@@ -142,6 +160,8 @@ skills_list <- unique(competencies$skill.group)
 # for testing:
 student <- students[5]
 
+# report on the students that are in the student list
+# which is defined in local.R
 for(student in students) {
   s_name <- ID_mapping[ID_mapping$student_ID==student,"Name"][1]  
   s_email <- ID_mapping[ID_mapping$student_ID==student,"Email"][1]
@@ -161,42 +181,36 @@ for(student in students) {
   
   # identify skills by group
   student_skills_groups <- unique(student_competencies$skill.group)
-  
-  cat("<hr>\nHello ",s_name,"(ID ",student,"; Badge ",s_badge,")\n\n","
-
-Here is a report on the skills we have recorded for you. Please note that the recorded skills can be highly variable depending on your module selections. You can use this report to assist in your skills related assessments, for your personal development planning, and for developing your CV etc.\n\n
-")
-  
-  if(length(s_badge)<1) {
-   cat("*** We do not have a record of your badge number. This means your skills report is based only on manual records and not including any scans you may have had. Please contact your personal tutor and inform them of your badge number. ") 
-  }
-  # print student info
-  # Note that students should fill in the questionnaire multiple times, so there can be multiple entries
-  
   cat("##",s_name, "\n")
   cat(s_email, "\n\n")
   cat("\n")
+  
+  cat("Hello ",s_name,"(ID ",student,"; Badge ",s_badge,")\n\n","
+
+Here is a report on the skills we have recorded for you. You can use this report to assist in your skills related assessments, for your personal development planning, and for developing your CV etc.\n\n
+")
+  
+  if(length(s_badge)<1) {
+   cat("\n<b>We do not have a record of your badge number. This means your skills report is based only on manual records and not including any badge scans you may have had. Please contact your personal tutor and inform them of your badge number.</b>\n\n") 
+  }
+
   cat("###","Your verified competency observations\n")
-  
-  
-  
+
   for(skill_group in student_skills_groups) {
     # skill_group <- student_skills_groups[1] for testing
     cat("####","Competencies in skill group -", skill_group,"\n")
     index <- student_competencies$skill.group==skill_group
     print(knitr::kable(student_competencies[index,-3], format="html") %>% kable_styling(bootstrap_options = c("striped", "hover"))) 
-    
-    
   }
   
   # student_competencies <- matched_reads[matched_reads$student_ID==student,c("observed_competency")]
   # classify skills
-  cat("<br>\n\n Kind regards <br>\n Your teaching team\n")
+  cat("<br>\n\n Kind regards <br>\n Your teaching team\n<hr>")
 }
 
 ```
 
-```{r output-files}
+```{r output-files, echo=FALSE}
 # classify skills - alternative way 
 matched_reads2 <- merge(matched_reads,competencies,by.x="observed_competency",by.y="Competency")
 #unmatched_reads2 <- merge(unmatched_reads,competencies,by.x="observed_competency",by.y="Competency")
