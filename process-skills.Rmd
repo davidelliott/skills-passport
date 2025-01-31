@@ -46,6 +46,9 @@ competencies[competencies$Competency.classification=="specialist","E"] <- "S"
 # Load ID mapping - this is needed because student badge numbers or other identifiers might not be the same as student ID
 ID_mapping <- read.csv("d:/git/skills-passport/data/ID_mapping/ID_mapping.csv")
 
+# we will refine the student list to the ones we have data for. But keep the full list for reporting later
+students.all <- students
+
 # Filter by the selected class, if one is defined
 if(length(students)>0) {
   ID_mapping <- ID_mapping[ID_mapping$student_ID%in%students,]
@@ -54,6 +57,9 @@ if(length(students)>0) {
 
 # Make sure we report on each student only once.
 students <- unique(students)
+
+# Identify the student IDs for which we do not have mapping information:
+no_mapping <- students.all[!students.all%in%students]
 
 # subset to records of interest for a report
 # ID_mapping <- ID_mapping[88:nrow(ID_mapping),]
@@ -169,8 +175,12 @@ matched_reads_competencies <- distinct(matched_reads_competencies,matched_reads_
 
 student_info <- 1
 
+# report on students for which we have no badge number:
+cat("We are unable to report on the following student IDs because the badge number is not known:\n",no_mapping,"\n\n")
+
 # pull out the records and make a report for each student
 skills_list <- unique(competencies$skill.group)
+
 # for testing:
 student <- students[1]
 
@@ -207,7 +217,8 @@ for(student in students) {
 
   cat("Hello ",s_name,"(ID ",student,"; Badge ",s_badge_from_IDmapping,"; Number of scans logged:",scan_count,")\n\n","
 
-Here is a report on the skills we have recorded for you. You can use this report to assist in your skills related assessments, for your personal development planning, and for developing your CV etc. Where the date is listed as NA this means it is a manual record such as being attendance based or to correct for forgotten card etc.\n\n
+Here is a report on the skills we have recorded for you. You can use this report to assist in your skills related assessments, for your personal development planning, and for developing your CV etc.\n\n * Where the date is listed as NA this means it is a manual record such as being attendance based or to correct for forgotten card etc.\n\n* In the E column `E` indicates `essential` competencies and `S` indicates `Specialist` which means they are not part of core teaching but you might get opportunities to pursue e.g. through your IS or optional sessions. There are normally about 3 essential competencies per skill group and you need all the essential ones to reach the `basic` level of achievement.\n\n * At level 4 students should achieve 3 skill groups to basic level - evidenced by 3 essential competencies in 3 different skill groups (i.e. minimum of 9 competencies).\n\n* At level 5 students should build 2 skill groups up to intermediate level by achieving 6 competencies in them whilst also broadening the base of basic skills.\n\n* In level 6 students should be evidenvcing the development of advanced skills in some areas, defined by gaining 9 different competencies in any skill group.
+\n\n
 ")
   
   if(length(s_badge_from_IDmapping)<1) {
@@ -238,8 +249,6 @@ matched_reads2 <- merge(matched_reads,competencies,by.x="observed_competency",by
 matched_table <- as.data.frame((matched <- with(matched_reads2, table(student_ID, observed_competency))))
 #with(matched_reads2, table(Name, observed_competency))
 #(matched <- with(matched_reads2, table(Name, observed_competency)))
-
-matched
 
 fname <- "d:/git/skills-passport/output/ID_competencies.csv"
 write.csv(x = matched, file = fname)
