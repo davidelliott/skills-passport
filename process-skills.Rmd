@@ -170,8 +170,9 @@ matched_reads_competencies <- matched_reads_competencies[matched_reads_competenc
 # change some column names for clearer outputs
 colnames(matched_reads_competencies)[c(1,12)] <- c("code", "competency")
 
-# keep only unique records. There might be an error leading to duplications, requires investigation.
-matched_reads_competencies <- distinct(matched_reads_competencies,matched_reads_competencies[,c(1,2,5)],.keep_all = T)
+# keep only unique records based on the date and student ID
+matched_reads_competencies <- distinct(matched_reads_competencies,matched_reads_competencies[,c(1,5,8)],.keep_all = T)
+
 
 student_info <- 1
 
